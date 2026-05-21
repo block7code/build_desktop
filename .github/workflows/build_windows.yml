@@ -1,18 +1,22 @@
 name: Build Flutter Windows (.exe)
 
-# Pemicu: Aksi ini berjalan setiap kali Anda membuat "Release" baru di GitHub
+# Pemicu: Aksi ini berjalan saat Anda membuat Release baru ATAU bisa dijalankan manual lewat tombol klik
 on:
   release:
     types: [published]
+  workflow_dispatch: # Menambahkan tombol pemicu manual di tab Actions
 
 jobs:
   build:
-    # Menggunakan server Windows resmi milik GitHub
     runs-on: windows-latest
     
-    # WAJIB DIKASIH: Memberikan izin ke server untuk mengunggah file ke halaman Release
     permissions:
       contents: write
+
+    # Mengatur agar semua baris perintah dijalankan di dalam subfolder build_desktop
+    defaults:
+      run:
+        working-directory: build_desktop
 
     steps:
     # 1. Mengambil kode dari repositori Anda
@@ -51,7 +55,7 @@ jobs:
     # 8. Mengompres hasil build menjadi file .zip agar mudah diunduh
     - name: Compress Release Artifact
       run: |
-        Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath build_windows_release.zip
+        Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath ..\build_windows_release.zip
 
     # 9. Mengunggah file .zip tersebut ke halaman Release GitHub Anda otomatis
     - name: Upload Release Asset
