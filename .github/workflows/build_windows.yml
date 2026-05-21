@@ -1,66 +1,138 @@
-name: Build Flutter Windows (.exe)
+name: Build Flutter Multi-Platform (Desktop & Mobile)
 
-# Pemicu: Aksi ini berjalan saat Anda membuat Release baru ATAU bisa dijalankan manual lewat tombol klik
 on:
   release:
     types: [published]
-  workflow_dispatch: # Menambahkan tombol pemicu manual di tab Actions
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  build:
+  # ==================== JOB 1: WINDOWS (.EXE) ====================
+  build-windows:
     runs-on: windows-latest
-    
     permissions:
       contents: write
-
-    # Mengatur agar semua baris perintah dijalankan di dalam subfolder build_desktop
     defaults:
       run:
         working-directory: build_desktop
-
     steps:
-    # 1. Mengambil kode dari repositori Anda
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    # 2. Memasang Java (dibutuhkan oleh sistem build)
-    - name: Set up Java
-      uses: actions/setup-java@v4
+    - uses: actions/checkout@v4
+    - uses: actions/setup-java@v4
       with:
         distribution: 'zulu'
         java-version: '17'
-
-    # 3. Memasang Flutter SDK versi stabil terbaru
-    - name: Set up Flutter
-      uses: subosito/flutter-action@v2
+    - uses: subosito/flutter-action@v2
       with:
         channel: 'stable'
-
-    # 4. Mengambil paket/dependencies pubspec.yaml
-    - name: Install dependencies
-      run: flutter pub get
-
-    # 5. Mengaktifkan platform Windows desktop
-    - name: Enable Windows desktop
-      run: flutter config --enable-windows-desktop
-
-    # 6. Menghasilkan folder platform jika belum ada
-    - name: Create Windows files
-      run: flutter create --platforms=windows .
-
-    # 7. Memulai proses kompilasi ke file .exe (Release)
-    - name: Build Windows Application
-      run: flutter build windows --release
-
-    # 8. Mengompres hasil build menjadi file .zip agar mudah diunduh
-    - name: Compress Release Artifact
-      run: |
-        Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath ..\build_windows_release.zip
-
-    # 9. Mengunggah file .zip tersebut ke halaman Release GitHub Anda otomatis
-    - name: Upload Release Asset
+    - run: flutter pub get
+    - run: flutter config --enable-windows-desktop
+    - run: flutter create --platforms=windows .
+    - run: flutter build windows --release
+    - name: Compress Windows Release
+      run: Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath ..\build_windows_release.zip
+    - name: Upload Windows Asset
       uses: softprops/action-gh-release@v2
       with:
         files: build_windows_release.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ==================== JOB 2: MACOS (.DMG) ====================
+  build-macos:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: build_desktop
+    steps:
+    - uses: actions/checkout@v4
+    - uses: subosito/flutter-action@v2
+      with:
+        channel: 'stable'
+    - run: flutter pub get
+    - run: flutter config --enable-macos-desktop
+    - run: flutter create --platforms=macos .
+    - run: flutter build macos --release
+    - name: Install create-dmg tool
+      run: npm install -g create-dmg
+    - name: Ensure background image exists
+      run: |
+        if [ ! -f background.png ]; then
+          curl -s -o background.png https://githubusercontent.com
+        fi
+    - name: Build macOS DMG Installer
+      run: |
+        create-dmg build/macos/Build/Products/Release/apps_desktop.app --overwrite --background=background.png
+        mv "apps_desktop 1.0.0.dmg" ../apps_desktop_installer.dmg || mv *.dmg ../apps_desktop_installer.dmg
+    - name: Upload macOS Asset
+      uses: softprops/action-gh-release@v2
+      with:
+        files: apps_desktop_installer.dmg
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ==================== JOB 3: ANDROID (.APK) ====================
+  build-android:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: build_desktop
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+    - uses: subosito/flutter-action@v2
+      with:
+        channel: 'stable'
+    - run: flutter pub get
+    - run: flutter create --platforms=android .
+    - run: flutter build apk --release
+    - name: Move and Rename APK
+      run: mv build/app/outputs/flutter-apk/app-release.apk ../aplikasi_android.apk
+    - name: Upload Android APK
+      uses: softprops/action-gh-release@v2
+      with:
+        files: aplikasi_android.apk
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ==================== JOB 4: IOS (.IPA) ====================
+  build-ios:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: build_desktop
+    steps:
+    - uses: actions/checkout@v4
+    - uses: subosito/flutter-action@v2
+      with:
+        channel: 'stable'
+    - run: flutter pub get
+    - run: flutter create --platforms=ios .
+    
+    # Membangun folder arsip iOS tanpa tanda tangan sertifikat berbayar
+    - name: Build iOS Xcode Archive
+      run: flutter build ios --release --no-codesign
+
+    # Trik menyatukan Runner.app ke folder Payload agar menjadi file standar .ipa
+    - name: Package to .ipa file
+      run: |
+        mkdir -p Payload
+        cp -r build/ios/iphoneos/Runner.app Payload/
+        zip -r ../aplikasi_ios.ipa Payload
+        
+    - name: Upload iOS IPA Asset
+      uses: softprops/action-gh-release@v2
+      with:
+        files: aplikasi_ios.ipa
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
