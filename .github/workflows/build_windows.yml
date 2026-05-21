@@ -1,0 +1,62 @@
+name: Build Flutter Windows (.exe)
+
+# Pemicu: Aksi ini berjalan setiap kali Anda membuat "Release" baru di GitHub
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    # Menggunakan server Windows resmi milik GitHub
+    runs-on: windows-latest
+    
+    # WAJIB DIKASIH: Memberikan izin ke server untuk mengunggah file ke halaman Release
+    permissions:
+      contents: write
+
+    steps:
+    # 1. Mengambil kode dari repositori Anda
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    # 2. Memasang Java (dibutuhkan oleh sistem build)
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+
+    # 3. Memasang Flutter SDK versi stabil terbaru
+    - name: Set up Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        channel: 'stable'
+
+    # 4. Mengambil paket/dependencies pubspec.yaml
+    - name: Install dependencies
+      run: flutter pub get
+
+    # 5. Mengaktifkan platform Windows desktop
+    - name: Enable Windows desktop
+      run: flutter config --enable-windows-desktop
+
+    # 6. Menghasilkan folder platform jika belum ada
+    - name: Create Windows files
+      run: flutter create --platforms=windows .
+
+    # 7. Memulai proses kompilasi ke file .exe (Release)
+    - name: Build Windows Application
+      run: flutter build windows --release
+
+    # 8. Mengompres hasil build menjadi file .zip agar mudah diunduh
+    - name: Compress Release Artifact
+      run: |
+        Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath build_windows_release.zip
+
+    # 9. Mengunggah file .zip tersebut ke halaman Release GitHub Anda otomatis
+    - name: Upload Release Asset
+      uses: softprops/action-gh-release@v2
+      with:
+        files: build_windows_release.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
